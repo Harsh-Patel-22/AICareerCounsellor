@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from dataclasses import asdict
 from uuid import uuid4
@@ -5,9 +6,83 @@ from uuid import uuid4
 import numpy as np
 
 from backend.catalog import get_catalog
-from backend.nlp import CODES, DIMENSIONS, STYLES, Observation, get_extractor, normalize
+from backend.nlp import CODES, DIMENSIONS, STYLES, Observation, activity_to_probe, described_example, get_extractor, normalize, span_candidates, stated_topic
 
 TURN_CAP = 12
+REFERENCE_CORRECTION = re.compile(
+    r"\b(?:what|which)\s+(?:other\s+)?(?:activit(?:y|ies)|things?|options?)\s+did i (?:mention|say|list)\b"
+    r"|\bwhat else did i (?:mention|say|list)\b"
+    r"|\bi\s+(?:(?:mentioned|said|listed)\s+(?:no other|only one)"
+    r"|(?:never|didn't|did not)\s+(?:mention|say|list)\s+(?:any\s+)?(?:other|another|anything else))\b",
+    re.I,
+)
+RECALL = re.compile(r"^(?:what did i (?:mention|say|tell you)|what have i (?:mentioned|said)|maine kya (?:bola|kaha|bataya))$")
+CONFUSION = re.compile(
+    r"^(?:what|huh|what do you mean|i (?:don't understand|didn't get that)|can you rephrase(?: that)?"
+    r"|kya matlab|samajh nahi aaya)$"
+)
+NO_DETAIL = {"i don't know", "i am not sure", "i'm not sure", "i'm still not sure", "i am still not sure",
+             "nothing", "not sure", "pata nahi"}
+HARD_TO_DESCRIBE = re.compile(
+    r"\b(?:(?:hard|difficult|tough) to (?:explain|express|describe|put into words)"
+    r"|(?:can't|cannot|don't know how to) (?:explain|describe|put (?:it|that) into words)"
+    r"|samajh nahi aa raha (?:kaise|kya) bata|kaise (?:bataun|samjhaun))\b"
+)
+GENERAL_ENJOYMENT = re.compile(
+    r"^(?:(?:it(?:'s| was| is)|i) )?(?:just )?(?:fun|nice|interesting|liked it|enjoyed it|"
+    r"the fun|bas maza aaya|maza aaya)$"
+)
+BRIEF_CHOICE = {"first", "second", "third", "none", "neither", "pehla", "dusra", "teesra", "koi nahi"}
+
+
+def is_conversation_repair(text: str) -> bool:
+    return bool(RECALL.fullmatch(text) or CONFUSION.fullmatch(text) or REFERENCE_CORRECTION.search(text))
+
+
+def lacks_detail(text: str) -> bool:
+    clauses = [segment.strip() for clause, _, _ in span_candidates(text)
+               for segment in normalize(clause).split(",") if segment.strip()]
+    return bool(clauses) and all(
+        clause in NO_DETAIL or GENERAL_ENJOYMENT.fullmatch(clause) or HARD_TO_DESCRIBE.search(clause)
+        for clause in clauses
+    )
+
+
+def brief_examples(text: str) -> str:
+    """Use the concrete parts of a short mixed list, leaving out feelings such as 'the fun'."""
+    parts = re.split(r"\s*,\s*(?:and\s+)?|\s+and\s+", text, flags=re.I)
+    if not 1 < len(parts) <= 5 or len(text.split()) > 12:
+        return ""
+    if not any(GENERAL_ENJOYMENT.fullmatch(normalize(part).strip(" .!?")) for part in parts):
+        return ""
+    examples = [re.sub(r"^the\s+", "", part.strip(" .!?"), flags=re.I) for part in parts
+                if part.strip(" .!?") and not GENERAL_ENJOYMENT.fullmatch(normalize(part).strip(" .!?"))]
+    if not examples:
+        return ""
+    return ", ".join(examples[:-1]) + " and " + examples[-1] if len(examples) > 1 else examples[0]
+
+
+def detail_excerpt(text: str) -> str:
+    """Prefer the latest concrete clause over a long recap of the whole reply."""
+    return next((clause for clause, _, _ in reversed(list(span_candidates(text)))
+                 if 3 <= len(clause.split()) <= 22 and len(clause) <= 150), "")
+
+
+def recent_context(messages: list[dict]) -> dict:
+    detail = ""
+    for message in reversed(messages):
+        if message["role"] != "user":
+            continue
+        text = message["text"]
+        short = normalize(text).strip(" .!?")
+        if (is_conversation_repair(short) or lacks_detail(text) or short == "skipped this question"
+                or text.startswith("[")):
+            continue
+        if topic := stated_topic(text):
+            return {"topic": topic, "detail": detail}
+        if not detail:
+            detail = detail_excerpt(text)
+    return {"topic": "", "detail": detail}
 
 
 def new_session(stage: int, language: str, school_subjects: list[str]) -> dict:
@@ -18,7 +93,7 @@ def new_session(stage: int, language: str, school_subjects: list[str]) -> dict:
     return {
         "id": uuid4().hex, "revision": 0, "stage": stage, "language": language,
         "school_subjects": school_subjects, "messages": [{"role": "assistant", "text": greeting}],
-        "ledger": [], "turns": 0, "substantive_turns": 0, "last_intent": None,
+        "ledger": [], "turns": 0, "assessment_turns": 0, "substantive_turns": 0, "last_intent": None,
         "asked": [], "report": None, "finished": False,
         "admission_facts": {},
     }
@@ -95,6 +170,51 @@ def comparison_value(interest: np.ndarray, fit: np.ndarray, first: str, second: 
 
 
 def select_intent(state: dict, current: list[Observation], latest: str, policy: str = "decision") -> dict:
+    short = normalize(latest).strip(" .!?")
+    if RECALL.fullmatch(short):
+        return {"kind": "recall", "key": f"recall-{state['turns']}", **recent_context(state["messages"][:-1])}
+    if CONFUSION.fullmatch(short):
+        return {"kind": "rephrase", "key": f"rephrase-{state['turns']}", **recent_context(state["messages"][:-1])}
+    if REFERENCE_CORRECTION.search(short):
+        return {"kind": "repair_reference", "key": f"repair-{state['turns']}", **recent_context(state["messages"][:-1])}
+    previous = state["last_intent"] or {}
+    if previous.get("kind") in {"scaffold_interest", "explore_example", "park_topic"} and (lacks_detail(latest) or short in BRIEF_CHOICE):
+        return {"kind": "park_topic", "key": f"park-{state['turns']}", "topic": previous.get("topic", "")}
+    if lacks_detail(latest):
+        context = recent_context(state["messages"][:-1])
+        topic = previous.get("topic") or context["topic"]
+        activity = previous.get("anchor", "") if previous.get("kind") == "probe_interest" else ""
+        detail = previous.get("detail") or activity or context["detail"]
+        if topic or detail:
+            return {"kind": "scaffold_interest", "key": f"scaffold-{state['turns']}", "topic": topic, "detail": detail,
+                    "quote_detail": bool(detail)}
+    if current and not any(item.tags for item in current):
+        if any(item.kind in {"limited_exposure", "external_preference"} for item in current):
+            return {"kind": "access_or_pressure", "key": f"access-{state['turns']}"}
+    named_topic = stated_topic(latest)
+    if (not named_topic and (example := described_example(latest))
+            and (previous.get("kind") in {"probe_topic", "probe_detail", "clarify", "scaffold_interest"}
+                 or not previous and not activity_to_probe(latest))):
+        return {"kind": "explore_example", "key": f"example-{state['turns']}",
+                "topic": previous.get("topic", ""), "example": example}
+    if previous.get("kind") == "probe_topic" and not named_topic and (detail := detail_excerpt(latest)):
+        if examples := brief_examples(detail):
+            return {"kind": "scaffold_interest", "key": f"scaffold-{state['turns']}",
+                    "topic": previous["topic"], "detail": examples}
+        if normalize(detail) != normalize(previous["topic"]) and short not in NO_DETAIL:
+            detail = re.sub(r"^(?:plus|also)\s*[, ]+\s*", "", detail, flags=re.I) or detail
+            return {"kind": "probe_detail", "key": f"detail-{state['turns']}", "topic": previous["topic"], "detail": detail}
+    if state["last_intent"] is None or state["last_intent"]["kind"] != "probe_interest":
+        activity = activity_to_probe(latest)
+        if activity and not any(item.kind == "interest" for item in current):
+            key = f"interest:{normalize(activity['anchor'])}"
+            if key not in state["asked"]:
+                return {"kind": "probe_interest", "key": key, **activity}
+    if not any(item.tags for item in current):
+        if named_topic:
+            key = f"topic:{normalize(named_topic)}"
+            if key not in state["asked"]:
+                return {"kind": "probe_topic", "key": key, "topic": named_topic}
     if not state["substantive_turns"] or (latest and normalize(latest).strip(" .!?") not in {"neither", "koi nahi", "koi bhi nahi"}
                                           and not any(item.tags for item in current)):
         return {"kind": "clarify", "key": f"clarify-{state['turns']}", "anchor": latest[:170]}
@@ -201,11 +321,15 @@ def report(state: dict) -> dict:
 
 
 def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision") -> dict:
+    repair = not skip and is_conversation_repair(normalize(text).strip(" .!?"))
+    state["assessment_turns"] = state.get("assessment_turns", state["turns"]) + (not repair)
     state["turns"] += 1
     state["messages"].append({"role": "user", "text": "Skipped this question" if skip else text})
     latest = "" if skip else text
     comparison = [] if skip else comparison_answer(latest, state["last_intent"])
-    observations = comparison or ([] if skip else get_extractor().extract(latest))
+    observations = comparison or ([] if skip or lacks_detail(latest) else get_extractor().extract(latest))
+    if not skip and not observations and state["last_intent"] and state["last_intent"]["kind"] in {"probe_interest", "probe_topic", "probe_detail", "explore_example"}:
+        observations = get_extractor().answer_to_interest_probe(latest)
     if any(item.tags for item in observations):
         state["substantive_turns"] += 1
     for item in observations:
@@ -217,7 +341,8 @@ def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision
             entry["context"] = state["last_intent"]["activities"][i]
         state["ledger"].append(entry)
     state["report"] = report(state)
-    done = state["turns"] >= TURN_CAP or (state["substantive_turns"] >= 6 and state["report"]["status"] == "lead")
+    done = (not repair and (state["assessment_turns"] >= TURN_CAP
+                            or (state["substantive_turns"] >= 6 and state["report"]["status"] == "lead")))
     if done:
         state["finished"] = True
         state["last_intent"] = None
