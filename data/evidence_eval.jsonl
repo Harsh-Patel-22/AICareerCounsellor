@@ -1,0 +1,28 @@
+{"text":"Everyone at home expects me to do engineering.","labels":[["external_preference","",0]],"language":"english"}
+{"text":"Papa bolte hain Science lena chahiye.","labels":[["external_preference","",0]],"language":"hinglish"}
+{"text":"I have never tried programming.","labels":[["limited_exposure","",0]],"language":"english"}
+{"text":"Maine kabhi robotics try nahi ki.","labels":[["limited_exposure","",0]],"language":"hinglish"}
+{"text":"Maybe Science. I'm unsure.","labels":[],"language":"english"}
+{"text":"Pata nahi, kya karun?","labels":[],"language":"hinglish"}
+{"text":"I want to study something useful.","labels":[],"language":"english"}
+{"text":"I got 88 in my most recent maths exam.","labels":[],"language":"english"}
+{"text":"I don't like writing poems for competitions.","labels":[["interest","A",-1]],"language":"english"}
+{"text":"Mujhe ledger check karna pasand nahi hai.","labels":[["interest","C",-1]],"language":"hinglish"}
+{"text":"I enjoy comparing figures from our neighbourhood water survey.","labels":[["interest","I",1]],"language":"english"}
+{"text":"I like making a model that can carry a heavy load.","labels":[["interest","R",1]],"language":"english"}
+{"text":"I enjoy editing stories in Gujarati for our newsletter.","labels":[["interest","A",1]],"language":"english"}
+{"text":"I love listening to how younger students learn.","labels":[["interest","S",1]],"language":"english"}
+{"text":"I enjoy presenting a plan and persuading the group.","labels":[["interest","E",1]],"language":"english"}
+{"text":"I like checking whether the price list matches the receipts.","labels":[["interest","C",1]],"language":"english"}
+{"text":"Mujhe kahaniyon ke liye dialogue likhna pasand hai.","labels":[["interest","A",1]],"language":"hinglish"}
+{"text":"Mujhe team ke liye project plan karna achha lagta hai.","labels":[["interest","E",1]],"language":"hinglish"}
+{"text":"Mujhe dukaan ke records check karna pasand hai.","labels":[["interest","C",1]],"language":"hinglish"}
+{"text":"Mujhe experiment ke results compare karna pasand hai.","labels":[["interest","I",1]],"language":"hinglish"}
+{"text":"My parents insist on Commerce, but I love sketching layouts for posters.","labels":[["external_preference","",0],["interest","A",1]],"language":"english"}
+{"text":"I interviewed local shopkeepers about their customers.","labels":[["demonstrated_action","S",1]],"language":"english"}
+{"text":"I reconciled the event receipts against the budget.","labels":[["demonstrated_action","C",1]],"language":"english"}
+{"text":"I repaired the broken switch on my model.","labels":[["demonstrated_action","R",1]],"language":"english"}
+{"text":"I wrote a poem about our town.","labels":[["demonstrated_action","A",1]],"language":"english"}
+{"text":"I compared how attendance changed before exams.","labels":[["demonstrated_action","I",1]],"language":"english"}
+{"text":"I pitched our stall idea to the student committee.","labels":[["demonstrated_action","E",1]],"language":"english"}
+{"text":"I am good at explaining difficult ideas.","labels":[["self_reported_strength","S",1]],"language":"english"}

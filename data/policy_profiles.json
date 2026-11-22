@@ -1,0 +1,83 @@
+[
+  {
+    "stage": 10,
+    "text": "I enjoy comparing discount prices and looking for a pattern in shop sales.",
+    "priority": "IEC",
+    "acceptable": [
+      "commerce-maths",
+      "humanities-econ",
+      "commerce"
+    ]
+  },
+  {
+    "stage": 10,
+    "text": "I love repairing broken equipment and building things by hand.",
+    "priority": "RIC",
+    "acceptable": [
+      "pcm",
+      "vocational",
+      "pcmb"
+    ]
+  },
+  {
+    "stage": 10,
+    "text": "I enjoy writing stories and reading poetry in Gujarati.",
+    "priority": "ASI",
+    "acceptable": [
+      "humanities-lit",
+      "arts-design",
+      "humanities-social"
+    ]
+  },
+  {
+    "stage": 12,
+    "text": "I enjoy interviewing people and comparing how their study habits change.",
+    "priority": "SIA",
+    "acceptable": [
+      "psychology",
+      "sociology",
+      "social-work"
+    ]
+  },
+  {
+    "stage": 12,
+    "text": "I like comparing prices and modelling the effect of discounts.",
+    "priority": "IEC",
+    "acceptable": [
+      "economics",
+      "statistics",
+      "finance"
+    ]
+  },
+  {
+    "stage": 12,
+    "text": "I love working through receipts and checking ledger totals.",
+    "priority": "CIE",
+    "acceptable": [
+      "bcom",
+      "ca",
+      "finance"
+    ]
+  },
+  {
+    "stage": 12,
+    "text": "I enjoy designing a bridge and building a model to test its strength.",
+    "priority": "RIA",
+    "acceptable": [
+      "civil",
+      "mechanical",
+      "physics",
+      "design"
+    ]
+  },
+  {
+    "stage": 12,
+    "text": "I enjoy writing stories in Gujarati and interpreting poems.",
+    "priority": "ASI",
+    "acceptable": [
+      "gujarati-lit",
+      "english-lit",
+      "journalism"
+    ]
+  }
+]
