@@ -21,8 +21,12 @@ CONFUSION = re.compile(
     r"^(?:what|huh|what do you mean|i (?:don't understand|didn't get that)|can you rephrase(?: that)?"
     r"|kya matlab|samajh nahi aaya)$"
 )
-NO_DETAIL = {"i don't know", "i am not sure", "i'm not sure", "i'm still not sure", "i am still not sure",
-             "nothing", "not sure", "pata nahi"}
+NO_DETAIL = {
+    "i don't know", "i am not sure", "i'm not sure", "i'm still not sure", "i am still not sure",
+    "nothing", "not sure", "pata nahi",
+    "yes", "yeah", "yep", "yes it is", "yes i do", "sure", "definitely", "correct", "right",
+    "haan", "haanji", "sahi hai", "bilkul", "theek hai", "okay", "ok"
+}
 HARD_TO_DESCRIBE = re.compile(
     r"\b(?:(?:hard|difficult|tough) to (?:explain|express|describe|put into words)"
     r"|(?:can't|cannot|don't know how to) (?:explain|describe|put (?:it|that) into words)"
@@ -33,6 +37,15 @@ GENERAL_ENJOYMENT = re.compile(
     r"the fun|bas maza aaya|maza aaya)$"
 )
 BRIEF_CHOICE = {"first", "second", "third", "none", "neither", "pehla", "dusra", "teesra", "koi nahi"}
+AFFIRMATIVE = re.compile(
+    r"^(?:yes|yeah|yep|yes it is|yes i do|sure|definitely|correct|right|haan|haanji|sahi hai|bilkul|theek hai|okay|ok)$",
+    re.I,
+)
+CONCLUDE = re.compile(
+    r"^(?:done|finish|completed?|i(?:'m| am) done|stop|show results?|give me recommendations?|"
+    r"show report|mujhe recommendations? do|bas|khatam|final result)$",
+    re.I,
+)
 
 
 def is_conversation_repair(text: str) -> bool:
@@ -64,8 +77,14 @@ def brief_examples(text: str) -> str:
 
 def detail_excerpt(text: str) -> str:
     """Prefer the latest concrete clause over a long recap of the whole reply."""
-    return next((clause for clause, _, _ in reversed(list(span_candidates(text)))
-                 if 3 <= len(clause.split()) <= 22 and len(clause) <= 150), "")
+    for clause, _, _ in reversed(list(span_candidates(text))):
+        norm = normalize(clause).strip(" .!?")
+        if norm in NO_DETAIL or GENERAL_ENJOYMENT.fullmatch(norm) or AFFIRMATIVE.match(norm):
+            continue
+        words = clause.split()
+        if 3 <= len(words) <= 22 and len(clause) <= 150:
+            return clause
+    return ""
 
 
 def recent_context(messages: list[dict]) -> dict:
@@ -178,11 +197,14 @@ def disagreement_value(interest: np.ndarray, fit: np.ndarray, first: str, second
     return float(uncertainty * path_gap)
 
 
-def best_activity(path, texts: list[str], catalog) -> str:
+def best_activity(path, texts: list[str], catalog, used: set[str] | None = None) -> str:
+    used = used or set()
+    available = [act for act in path.activities if act.lower() not in used] or list(path.activities)
     if not texts:
-        return path.activities[0]
-    matched = [(act, score) for pid, act, score in catalog.retrieve(texts, path.stage, limit=25) if pid == path.id]
-    return max(matched, key=lambda x: x[1])[0] if matched else path.activities[0]
+        return available[0]
+    matched = [(act, score) for pid, act, score in catalog.retrieve(texts, path.stage, limit=25)
+               if pid == path.id and act.lower() not in used]
+    return max(matched, key=lambda x: x[1])[0] if matched else available[0]
 
 
 def select_intent(state: dict, current: list[Observation], latest: str, policy: str = "decision") -> dict:
@@ -217,7 +239,7 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
         if examples := brief_examples(detail):
             return {"kind": "scaffold_interest", "key": f"scaffold-{state['turns']}",
                     "topic": previous["topic"], "detail": examples}
-        if normalize(detail) != normalize(previous["topic"]) and short not in NO_DETAIL:
+        if normalize(detail) != normalize(previous["topic"]) and short not in NO_DETAIL and not AFFIRMATIVE.match(short):
             detail = re.sub(r"^(?:plus|also)\s*[, ]+\s*", "", detail, flags=re.I) or detail
             return {"kind": "probe_detail", "key": f"detail-{state['turns']}", "topic": previous["topic"], "detail": detail}
     if state["last_intent"] is None or state["last_intent"]["kind"] != "probe_interest":
@@ -233,7 +255,10 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
                 return {"kind": "probe_topic", "key": key, "topic": named_topic}
     if not state["substantive_turns"] or (latest and normalize(latest).strip(" .!?") not in {"neither", "koi nahi", "koi bhi nahi"}
                                           and not any(item.tags for item in current)):
-        return {"kind": "clarify", "key": f"clarify-{state['turns']}", "anchor": latest[:170]}
+        anchor = latest[:170]
+        if short in NO_DETAIL or AFFIRMATIVE.match(short):
+            anchor = previous.get("anchor") or previous.get("topic") or previous.get("detail") or ""
+        return {"kind": "clarify", "key": f"clarify-{state['turns']}", "anchor": anchor}
     paths, interest, fit, order = rank_paths(state)
     catalog = get_catalog()
     texts = [entry.get("context") or entry["text"] for entry in active_evidence(state)
@@ -243,6 +268,7 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
     for entry in active_evidence(state):
         for code in entry["tags"]:
             counts[code] += 1
+    used_acts = {act.lower() for acts in state.get("asked_activities", []) for act in acts}
     choices = []
     # Use distinct activity pairs from the leading options, then explore broader Holland dimensions.
     for i, left_index in enumerate(order[:5]):
@@ -264,25 +290,32 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
             else:
                 value = comparison_value(interest, fit, first, second)
             grounding = (0.006 if recent.intersection((first, second)) else 0.0) + (0.005 / (1 + i))
-            left_activity = best_activity(left, texts, catalog)
-            right_activity = best_activity(right, texts, catalog) if second == right.codes[0] else STYLES[second]
-            choices.append((value + coverage + grounding, {"kind": "compare", "key": key, "codes": [first, second],
-                                                "activities": [left_activity, right_activity]}))
-    for i, first in enumerate(CODES):
-        for second in CODES[i + 1:]:
-            key = "".join(sorted((first, second)))
-            if key in state["asked"]:
+            left_activity = best_activity(left, texts, catalog, used_acts)
+            right_activity = best_activity(right, texts, catalog, used_acts) if second == right.codes[0] else STYLES[second]
+            if left_activity.lower() == right_activity.lower():
                 continue
-            coverage = 0.005 * (1 / (1 + counts[first]) + 1 / (1 + counts[second]))
-            if policy == "coverage":
-                value = 0.0
-            elif policy == "disagreement":
-                value = disagreement_value(interest, fit, first, second, paths)
-            else:
-                value = comparison_value(interest, fit, first, second)
-            grounding = 0.004 if recent.intersection((first, second)) else 0.0
-            choices.append((value + coverage + grounding - 0.002, {"kind": "compare", "key": key, "codes": [first, second],
-                                                         "activities": [STYLES[first], STYLES[second]]}))
+            penalty = 0.03 if (left_activity.lower() in used_acts or right_activity.lower() in used_acts) else 0.0
+            choices.append((value + coverage + grounding - penalty, {"kind": "compare", "key": key, "codes": [first, second],
+                                                "activities": [left_activity, right_activity]}))
+    if not choices:
+        for i, first in enumerate(CODES):
+            for second in CODES[i + 1:]:
+                key = "".join(sorted((first, second)))
+                if key in state["asked"]:
+                    continue
+                coverage = 0.005 * (1 / (1 + counts[first]) + 1 / (1 + counts[second]))
+                if policy == "coverage":
+                    value = 0.0
+                elif policy == "disagreement":
+                    value = disagreement_value(interest, fit, first, second, paths)
+                else:
+                    value = comparison_value(interest, fit, first, second)
+                grounding = 0.004 if recent.intersection((first, second)) else 0.0
+                left_act = STYLES[first]
+                right_act = STYLES[second]
+                penalty = 0.03 if (left_act.lower() in used_acts or right_act.lower() in used_acts) else 0.0
+                choices.append((value + coverage + grounding - 0.002 - penalty, {"kind": "compare", "key": key, "codes": [first, second],
+                                                             "activities": [left_act, right_act]}))
     if not choices:
         return {"kind": "clarify", "key": f"clarify-{state['turns']}", "anchor": latest[:170]}
     if recent:
@@ -301,14 +334,23 @@ def comparison_answer(text: str, intent: dict | None) -> list[Observation]:
         "second": [1], "the second": [1], "the second one": [1], "option 2": [1], "2": [1], "dusra": [1],
         "both": [0, 1], "dono": [0, 1],
     }.get(reply, [])
+    if not label and intent.get("activities"):
+        first_act = normalize(intent["activities"][0])
+        second_act = normalize(intent["activities"][1])
+        first_words = set(re.findall(r"\w+", first_act)) - {"and", "or", "the", "a", "an", "something"}
+        second_words = set(re.findall(r"\w+", second_act)) - {"and", "or", "the", "a", "an", "something"}
+        reply_words = set(re.findall(r"\w+", reply)) - {"and", "or", "the", "a", "an", "something"}
+
+        first_match = reply in first_act or (reply_words and len(reply_words & first_words) >= min(2, len(reply_words)))
+        second_match = reply in second_act or (reply_words and len(reply_words & second_words) >= min(2, len(reply_words)))
+
+        if first_match and second_match:
+            label = [0, 1]
+        elif first_match:
+            label = [0]
+        elif second_match:
+            label = [1]
     return [Observation(text, 0, len(text), "interest", (intent["codes"][index],), 1) for index in label]
-
-
-CONCLUDE = re.compile(
-    r"^(?:done|finish|completed?|i(?:'m| am) done|stop|show results?|give me recommendations?|"
-    r"show report|mujhe recommendations? do|bas|khatam|final result)$",
-    re.I,
-)
 
 
 def report(state: dict) -> dict:
@@ -316,12 +358,23 @@ def report(state: dict) -> dict:
     paths, interest, fit, order = rank_paths(state)
     signals = [entry for entry in active_evidence(state) if entry["tags"]]
     positive_signals = [entry for entry in signals if entry["polarity"] > 0]
+    positive, negative, strength = profile(state)
+    riasec_profile = {
+        "Realistic": int(round(min(100, max(0, positive[0] * 100)))),
+        "Investigative": int(round(min(100, max(0, positive[1] * 100)))),
+        "Artistic": int(round(min(100, max(0, positive[2] * 100)))),
+        "Social": int(round(min(100, max(0, positive[3] * 100)))),
+        "Enterprising": int(round(min(100, max(0, positive[4] * 100)))),
+        "Conventional": int(round(min(100, max(0, positive[5] * 100)))),
+    }
     if not positive_signals:
-        return {"status": "needs_evidence", "options": [], "note": "Share a specific activity you enjoyed or tried to get a personalised shortlist."}
+        return {"status": "needs_evidence", "options": [], "note": "Share a specific activity you enjoyed or tried to get a personalised shortlist.",
+                "riasec_profile": riasec_profile, "catalog_matches": []}
     supported_codes = {code for entry in positive_signals for code in entry["tags"]}
     supported_order = [index for index in order if supported_codes.intersection(paths[index].codes)]
     if not supported_order:
-        return {"status": "needs_evidence", "options": [], "note": "Share another activity to help us match a pathway."}
+        return {"status": "needs_evidence", "options": [], "note": "Share another activity to help us match a pathway.",
+                "riasec_profile": riasec_profile, "catalog_matches": []}
     leader = supported_order[0]
     stability = float((np.argmax(fit, axis=1) == leader).mean())
     independent = {normalize(entry.get("context") or entry["text"]) for entry in positive_signals}
@@ -397,7 +450,17 @@ def report(state: dict) -> dict:
         tradeoff = f"A useful difference to explore is whether you prefer {first.activities[0]} or {second.activities[0]}."
     else:
         tradeoff = "Try one of the study activities and share which part held your interest."
-    return {"status": "lead" if has_lead else "provisional", "options": ranked, "note": tradeoff}
+    catalog_matches = [
+        {"pathway": catalog.by_id[pid].title, "activity": act, "similarity": round(float(score), 3)}
+        for pid, act, score in catalog.retrieve(texts, state["stage"], limit=6)
+    ] if texts else []
+    return {
+        "status": "lead" if has_lead else "provisional",
+        "options": ranked,
+        "note": tradeoff,
+        "riasec_profile": riasec_profile,
+        "catalog_matches": catalog_matches,
+    }
 
 
 def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision") -> dict:
@@ -409,8 +472,19 @@ def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision
     latest = "" if skip else text
     comparison = [] if skip else comparison_answer(latest, state["last_intent"])
     observations = comparison or ([] if skip or lacks_detail(latest) else get_extractor().extract(latest))
-    if not skip and not observations and state["last_intent"] and state["last_intent"]["kind"] in {"probe_interest", "probe_topic", "probe_detail", "explore_example"}:
+    if not skip and not observations and state["last_intent"]:
         observations = get_extractor().answer_to_interest_probe(latest)
+        if not observations and AFFIRMATIVE.match(normalize(latest).strip(" .!?")):
+            prev = state["last_intent"]
+            codes = tuple(prev.get("codes", ()))
+            if not codes and state.get("report") and state["report"].get("options"):
+                top_id = state["report"]["options"][0]["id"]
+                catalog = get_catalog()
+                codes = tuple(catalog.by_id[top_id].codes[:2])
+            if not codes:
+                codes = ("R",) if any(w in latest.lower() or w in str(prev).lower() for w in ["building", "troubleshoot", "hardware", "fix", "circuit"]) else ("I",)
+            anchor_text = prev.get("anchor") or prev.get("topic") or prev.get("detail") or "confirmed interest"
+            observations = [Observation(anchor_text, 0, len(anchor_text), "interest", codes, 1)]
     if any(item.tags for item in observations):
         state["substantive_turns"] += 1
     for item in observations:
@@ -431,7 +505,12 @@ def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision
         state["messages"].append({"role": "assistant", "text": msg})
     else:
         intent = select_intent(state, observations, latest, policy)
-        question, engine = render(intent, state["language"], latest, observations)
+        if intent.get("activities"):
+            state.setdefault("asked_activities", []).append(list(intent["activities"]))
+        try:
+            question, engine = render(intent, state["language"], latest, observations, state.get("messages", []))
+        except TypeError:
+            question, engine = render(intent, state["language"], latest, observations)
         state["last_intent"] = intent
         state["asked"].append(intent["key"])
         state["messages"].append({"role": "assistant", "text": question, "engine": engine})

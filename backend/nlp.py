@@ -48,14 +48,14 @@ INTEREST = re.compile(
 )
 ACTION = re.compile(
     r"\b(?:built|tested|wrote|made|taught|volunteered|assembled|repaired|tracked|helped|"
-    r"debugged|recorded|reconciled|compared|analysed|analyzed|"
+    r"coded|programmed|developed|debugged|computed|recorded|reconciled|compared|analysed|analyzed|"
     r"interviewed|explained|designed|sketched|coordinated|"
     r"organised|organized|pitched|checked|timed|drew|shot|counted|examined|mapped|sampled|edited|observed|"
-    r"kiye|kiya|banaya|banayi|banaye|banana|badla|badli|badal|badalke|dekha|dekhi|seekha|seekhi|padhaya|padhai)\b",
+    r"code kiya|program kiya|code banaya|program banaya|kiye|kiya|banaya|banayi|banaye|banana|badla|badli|badal|badalke|dekha|dekhi|seekha|seekhi|padhaya|padhai)\b",
     re.I,
 )
 EXAMPLE_RESULT = re.compile(
-    r"\b(?:made|built|created|designed|rewrote|wrote|programmed|wired|played|recorded|tested|"
+    r"\b(?:made|built|created|designed|rewrote|wrote|programmed|coded|wired|played|recorded|tested|"
     r"demonstrated|mixed|changed|repaired|assembled|sketched|painted|compared|mapped|measured)\s+(?P<result>[^,]+)",
     re.I,
 )
@@ -74,9 +74,9 @@ FIRST_PERSON_ACTION = re.compile(r"^(?P<speaker>i|maine)\s+", re.I)
 STATED_PREFERENCE = re.compile(r"^i\s+(?:used to\s+)?(?:really\s+)?(?:enjoy(?:ed)?|lov(?:e|ed)|lik(?:e|ed))\s+(.+)", re.I)
 NO_ACTIVITY = re.compile(r"\b(?:never|didn't|did not|don't|do not|would|might|could|want to|nahi)\b", re.I)
 INTEREST_FRAGMENT = re.compile(
-    r"^(?:finding|figuring|seeing|spotting|comparing|checking|working|noticing|building|making|writing|"
-    r"designing|organizing|interviewing|testing|analyzing|reading|listening|helping|teaching)\b"
-    r"|\b(?:dekhna|samajhna|dhundhna|compare karna|check karna)\s*$",
+    r"^(?:the\s+)?(?:coding|programming|developing|computing|software|finding|figuring|seeing|spotting|comparing|checking|working|noticing|building|making|writing|"
+    r"designing|organizing|interviewing|testing|analyzing|reading|listening|helping|teaching|solving|robotics|circuits?|math|mathematics|calculus)\b"
+    r"|\b(?:c\s+language|python|code|program|programming|software|robotics|circuits?|data structures|algorithms?|dekhna|samajhna|dhundhna|compare karna|check karna)\s*$",
     re.I,
 )
 NO_INTEREST_FRAGMENT = re.compile(r"\b(?:nothing|none|no|not|nahi|bas|had to|was told|boring)\b", re.I)
@@ -240,6 +240,8 @@ class EvidenceExtractor:
             return (), ""
         scores = self.tags.predict_proba(vector)[0]
         if max(scores) < 0.45:
+            if re.search(r"\b(?:computer|computers|coding|code|program|programming|c language|software)\b", normalize(text), re.I):
+                return ("I",), "interest"
             return (), ""
         order = sorted(range(len(CODES)), key=lambda index: scores[index], reverse=True)
         tags = tuple(CODES[index] for index in order[:2] if scores[index] >= max(0.40, max(scores) - 0.19))
@@ -255,6 +257,9 @@ class EvidenceExtractor:
         if not INTEREST_FRAGMENT.search(plain) or NO_INTEREST_FRAGMENT.search(plain):
             return []
         tags, kind = self.predict(clause)
+        if not tags and re.search(r"\b(?:computer|computers|coding|code|program|programming|c language|software)\b", plain, re.I):
+            tags = ("I",)
+            kind = "interest"
         if tags and kind not in {"external_preference", "limited_exposure", "no_evidence"}:
             return [Observation(clause, start, end, "interest", tags, 1)]
         return []
