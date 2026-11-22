@@ -88,3 +88,36 @@
 {"text":"I hate tutoring people","construct":"interest","tags":["S"]}
 {"text":"Mujhe data analyse karna pasand nahi","construct":"interest","tags":["I"]}
 {"text":"I enjoy interviewing classmates and analysing responses","construct":"interest","tags":["S","I"]}
+{"text":"I enjoy structural design and drawing site plans","construct":"interest","tags":["R","I"]}
+{"text":"I check material strength for physical structures","construct":"interest","tags":["R","I"]}
+{"text":"I drew a site plan showing where a drain might fit","construct":"demonstrated_action","tags":["R"]}
+{"text":"I like working on infrastructure people will actually use","construct":"interest","tags":["R"]}
+{"text":"I enjoy mapping biodiversity and studying animal ecology","construct":"interest","tags":["R","I"]}
+{"text":"I prefer outdoor field research to working with a spreadsheet","construct":"interest","tags":["R","I"]}
+{"text":"I joined a morning bird count and observed wildlife near the lake","construct":"demonstrated_action","tags":["R","I"]}
+{"text":"I tested how different seedlings grew by moving pots to windows","construct":"demonstrated_action","tags":["I"]}
+{"text":"I enjoy examining historical documents and comparing sources when they disagree","construct":"interest","tags":["I","A"]}
+{"text":"I liked comparing dates in old letters with newspaper archives","construct":"interest","tags":["I","A"]}
+{"text":"I want to know what changed at that time before telling the story","construct":"interest","tags":["I","A"]}
+{"text":"I enjoy fact-checking an account and writing a news story from interviews","construct":"interest","tags":["A","I","S"]}
+{"text":"I want to report what happened rather than pitch a campaign","construct":"interest","tags":["A","I"]}
+{"text":"I shot video clips and spent time checking which claims in interviews were true","construct":"demonstrated_action","tags":["I","S"]}
+{"text":"Mujhe alag alag sounds ko jodna aur music choose karna pasand hai","construct":"interest","tags":["A"]}
+{"text":"I enjoy creating the mood with background music for a scene","construct":"interest","tags":["A"]}
+{"text":"I would rather edit the soundtrack than perform it","construct":"interest","tags":["A"]}
+{"text":"Friends ke function ke liye maine audio mix banaya tha","construct":"demonstrated_action","tags":["A"]}
+{"text":"Mujhe school newsletter ke cover ka layout banana pasand hai","construct":"interest","tags":["A"]}
+{"text":"I enjoy designing posters especially making a page easier to understand","construct":"interest","tags":["A"]}
+{"text":"Mujhe sketch karke dekhna pasand tha ki kaunsa handle comfortable lage","construct":"interest","tags":["A","R"]}
+{"text":"I enjoy user layout trials and designing objects for a user","construct":"interest","tags":["A","R"]}
+{"text":"I want to refine product designs based on user feedback","construct":"interest","tags":["A","R"]}
+{"text":"Mausi ke liye maine ek chhota stand banaya","construct":"demonstrated_action","tags":["R"]}
+{"text":"I enjoy comparing reaction rates and recording experimental observations","construct":"interest","tags":["I"]}
+{"text":"Maine teen jars mein namak badal ke chemical reaction test kiya","construct":"demonstrated_action","tags":["I"]}
+{"text":"The chemical changes are more interesting to me than food","construct":"interest","tags":["I"]}
+{"text":"Mujhe chhote students ko samjhana aur padhana pasand hai","construct":"interest","tags":["S"]}
+{"text":"Mujhe maza tab aata hai jab unko apni galti khud samajh aati hai","construct":"interest","tags":["S"]}
+{"text":"I enjoy explaining problems in a way that makes sense to someone younger","construct":"interest","tags":["S"]}
+{"text":"I timed two queues for a week and drew a graph to spot waiting patterns","construct":"demonstrated_action","tags":["I"]}
+{"text":"I enjoyed spotting patterns in the waiting times and testing improvements","construct":"interest","tags":["I"]}
+{"text":"I want to use data to compare everyday decisions","construct":"interest","tags":["I"]}

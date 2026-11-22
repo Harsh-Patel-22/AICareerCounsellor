@@ -145,9 +145,11 @@ def fallback_question(intent: dict, language: str, latest: str, observations) ->
         if hinglish:
             return "Ghar ki expectations ke saath aapki apni pasand bhi zaroori hai. Aapne khud se kaunsi activity enjoy ki hai?"
         return "It can be hard to weigh family advice alongside your own interests. What is an activity you chose for yourself and enjoyed?"
-    if hinglish:
-        return "Kya aap koi ek recent activity bata sakte hain jisme aapko sabse zyada maza aaya?"
     anchor = re.sub(r"[\r\n?.!]+", " ", latest[:90]).strip()
+    if hinglish:
+        if anchor:
+            return f"Jab aapne “{anchor}” kaha, toh usmein se kaunsi specific activity ya baat aapke dhyan mein aati hai?"
+        return "Kya aap koi ek recent activity bata sakte hain jisme aapko sabse zyada maza aaya?"
     if anchor:
         return f"When you say “{anchor}”, what is one specific activity or part of that subject that comes to mind?"
     return "What is one activity you enjoyed recently, at school or outside it?"

@@ -1,0 +1,56 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: counsellor-ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: counsellor-api
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - CAREER_OLLAMA_URL=http://ollama:11434
+      - CAREER_DB_PATH=/data/counsellor.sqlite3
+    volumes:
+      - counsellor-data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama:
+        condition: service_started
+
+  ui:
+    build: .
+    container_name: counsellor-ui
+    command: streamlit run app/main.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      - CAREER_API_URL=http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+  nlp-tools:
+    build: .
+    container_name: counsellor-nlp-tools
+    command: python -m backend.evaluate
+    environment:
+      - CAREER_OLLAMA_URL=http://ollama:11434
+      - CAREER_DB_PATH=/data/counsellor.sqlite3
+    volumes:
+      - counsellor-data:/data
+      - .:/workspace
+
+volumes:
+  ollama-models:
+    name: counsellor-ollama-models
+  counsellor-data:
+    name: counsellor-session-data

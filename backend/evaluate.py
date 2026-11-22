@@ -119,7 +119,7 @@ def main():
         "scope": "Small authored development benchmark. Neither a human study nor a sealed test set.",
         "evidence_examples": len(examples), "evidence": evaluate_evidence(examples),
         "retrieval": evaluate_retrieval(profiles),
-        "policy": {policy: evaluate_policy(profiles, policy, args.turns) for policy in ("coverage", "decision")},
+        "policy": {policy: evaluate_policy(profiles, policy, args.turns) for policy in ("coverage", "disagreement", "decision")},
     }
     if args.ollama:
         results["ollama_extraction"] = evaluate_ollama(examples)

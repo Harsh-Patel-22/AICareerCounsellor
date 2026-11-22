@@ -24,7 +24,8 @@ STYLES = {
 }
 GLOSSARY = {"analyse": "analyze", "analysing": "analyzing", "organise": "organize",
             "organising": "organizing", "accha": "achha", "acha": "achha",
-            "nahin": "nahi", "nhi": "nahi", "mujko": "mujhe"}
+            "nahin": "nahi", "nhi": "nahi", "mujko": "mujhe",
+            "padana": "padhana", "samjana": "samjhana"}
 SPLIT = re.compile(r"[.!?;\n]+|\b(?:but|lekin|magar|however)\b", re.I)
 JOINED_ACTIVITIES = re.compile(r"\s+(?:and|aur)\s+", re.I)
 EXTERNAL = re.compile(
@@ -39,12 +40,20 @@ EXPOSURE = re.compile(r"\b(?:never tried|never done|never coded|no access|no cha
 NEGATIVE = re.compile(r"\b(?:dislike|hate|not enjoy|do not like|don't like|"
                       r"don't enjoy|not interested|pasand nahi|nahi pasand|"
                       r"not my thing)\b", re.I)
-INTEREST = re.compile(r"\b(?:enjoy(?:ed|s)?|likes?|liked|love(?:d|s)?|prefer(?:red|s)?|"
-                      r"hate|dislike|pasand|maz[ae]|achha lag|curious|interesting)\b", re.I)
-ACTION = re.compile(r"\b(?:built|tested|wrote|made|taught|volunteered|assembled|repaired|tracked|helped|"
-                    r"debugged|recorded|reconciled|compared|analysed|analyzed|"
-                    r"interviewed|explained|designed|sketched|coordinated|"
-                    r"organised|organized|pitched|checked|kiye|kiya)\b", re.I)
+INTEREST = re.compile(
+    r"\b(?:enjoy(?:ed|s)?|likes?|liked|love(?:d|s)?|prefer(?:red|s)?|would prefer|would rather|"
+    r"want to\s+(?:use|work|explore|study|report|change|know|learn|do|try)|"
+    r"hate|dislike|pasand|maz[ae]|achha lag|curious|curiosity|interesting|interest(?:ed)? in|dilchaspi)\b",
+    re.I,
+)
+ACTION = re.compile(
+    r"\b(?:built|tested|wrote|made|taught|volunteered|assembled|repaired|tracked|helped|"
+    r"debugged|recorded|reconciled|compared|analysed|analyzed|"
+    r"interviewed|explained|designed|sketched|coordinated|"
+    r"organised|organized|pitched|checked|timed|drew|shot|counted|examined|mapped|sampled|edited|observed|"
+    r"kiye|kiya|banaya|banayi|banaye|banana|badla|badli|badal|badalke|dekha|dekhi|seekha|seekhi|padhaya|padhai)\b",
+    re.I,
+)
 EXAMPLE_RESULT = re.compile(
     r"\b(?:made|built|created|designed|rewrote|wrote|programmed|wired|played|recorded|tested|"
     r"demonstrated|mixed|changed|repaired|assembled|sketched|painted|compared|mapped|measured)\s+(?P<result>[^,]+)",
@@ -167,7 +176,7 @@ def vectorizers(mode: str = "combined") -> FeatureUnion:
 
 class EvidenceExtractor:
     def __init__(self, mode: str = "combined"):
-        records = [json.loads(line) for line in (ROOT / "data/evidence_seed.jsonl").read_text(encoding="utf-8").splitlines()]
+        records = [json.loads(line) for line in (ROOT / "data/evidence_seed.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
         self.mode = mode
         if mode == "rules":
             return

@@ -169,6 +169,22 @@ def comparison_value(interest: np.ndarray, fit: np.ndarray, first: str, second: 
     return float(before - after)
 
 
+def disagreement_value(interest: np.ndarray, fit: np.ndarray, first: str, second: str, paths: list) -> float:
+    gap = interest[:, CODES.index(first)] - interest[:, CODES.index(second)]
+    uncertainty = float(np.std(gap))
+    first_fit = [fit[:, i].mean() for i, p in enumerate(paths) if p.codes[0] == first]
+    second_fit = [fit[:, i].mean() for i, p in enumerate(paths) if p.codes[0] == second]
+    path_gap = abs(np.mean(first_fit) - np.mean(second_fit)) if first_fit and second_fit else 0.05
+    return float(uncertainty * path_gap)
+
+
+def best_activity(path, texts: list[str], catalog) -> str:
+    if not texts:
+        return path.activities[0]
+    matched = [(act, score) for pid, act, score in catalog.retrieve(texts, path.stage, limit=25) if pid == path.id]
+    return max(matched, key=lambda x: x[1])[0] if matched else path.activities[0]
+
+
 def select_intent(state: dict, current: list[Observation], latest: str, policy: str = "decision") -> dict:
     short = normalize(latest).strip(" .!?")
     if RECALL.fullmatch(short):
@@ -219,6 +235,9 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
                                           and not any(item.tags for item in current)):
         return {"kind": "clarify", "key": f"clarify-{state['turns']}", "anchor": latest[:170]}
     paths, interest, fit, order = rank_paths(state)
+    catalog = get_catalog()
+    texts = [entry.get("context") or entry["text"] for entry in active_evidence(state)
+             if entry["polarity"] > 0 and entry["kind"] in {"interest", "demonstrated_action"}]
     counts = defaultdict(int)
     recent = {tag for item in current if item.polarity > 0 for tag in item.tags}
     for entry in active_evidence(state):
@@ -238,18 +257,29 @@ def select_intent(state: dict, current: list[Observation], latest: str, policy: 
             if key in state["asked"]:
                 continue
             coverage = 0.005 * (1 / (1 + counts[first]) + 1 / (1 + counts[second]))
-            value = 0 if policy == "coverage" else comparison_value(interest, fit, first, second)
-            grounding = 0.004 if recent.intersection((first, second)) else 0.0
-            right_activity = right.activities[0] if second == right.codes[0] else STYLES[second]
+            if policy == "coverage":
+                value = 0.0
+            elif policy == "disagreement":
+                value = disagreement_value(interest, fit, first, second, paths)
+            else:
+                value = comparison_value(interest, fit, first, second)
+            grounding = (0.006 if recent.intersection((first, second)) else 0.0) + (0.005 / (1 + i))
+            left_activity = best_activity(left, texts, catalog)
+            right_activity = best_activity(right, texts, catalog) if second == right.codes[0] else STYLES[second]
             choices.append((value + coverage + grounding, {"kind": "compare", "key": key, "codes": [first, second],
-                                                "activities": [left.activities[0], right_activity]}))
+                                                "activities": [left_activity, right_activity]}))
     for i, first in enumerate(CODES):
         for second in CODES[i + 1:]:
             key = "".join(sorted((first, second)))
             if key in state["asked"]:
                 continue
             coverage = 0.005 * (1 / (1 + counts[first]) + 1 / (1 + counts[second]))
-            value = 0 if policy == "coverage" else comparison_value(interest, fit, first, second)
+            if policy == "coverage":
+                value = 0.0
+            elif policy == "disagreement":
+                value = disagreement_value(interest, fit, first, second, paths)
+            else:
+                value = comparison_value(interest, fit, first, second)
             grounding = 0.004 if recent.intersection((first, second)) else 0.0
             choices.append((value + coverage + grounding - 0.002, {"kind": "compare", "key": key, "codes": [first, second],
                                                          "activities": [STYLES[first], STYLES[second]]}))
@@ -274,9 +304,16 @@ def comparison_answer(text: str, intent: dict | None) -> list[Observation]:
     return [Observation(text, 0, len(text), "interest", (intent["codes"][index],), 1) for index in label]
 
 
+CONCLUDE = re.compile(
+    r"^(?:done|finish|completed?|i(?:'m| am) done|stop|show results?|give me recommendations?|"
+    r"show report|mujhe recommendations? do|bas|khatam|final result)$",
+    re.I,
+)
+
+
 def report(state: dict) -> dict:
     catalog = get_catalog()
-    paths, _, fit, order = rank_paths(state)
+    paths, interest, fit, order = rank_paths(state)
     signals = [entry for entry in active_evidence(state) if entry["tags"]]
     positive_signals = [entry for entry in signals if entry["polarity"] > 0]
     if not positive_signals:
@@ -294,18 +331,61 @@ def report(state: dict) -> dict:
         and any(paths[leader].codes[0] in entry["tags"] for entry in explicit)
     )
     has_lead = len(independent) >= 2 and bool(explicit) and stability >= 0.70 and not has_conflict
+
+    # Compute multi-factor breakdown weights
+    positive, negative, strength = profile(state)
+    weights = np.zeros((len(CODES), len(paths)))
+    for pos, p in enumerate(paths):
+        for position, code in enumerate(p.codes):
+            weights[CODES.index(code), pos] = (len(p.codes) - position)
+    weights /= weights.sum(axis=0)
+    texts = [entry.get("context") or entry["text"] for entry in positive_signals]
+    matches = defaultdict(float)
+    for path_id, _, score in catalog.retrieve(texts, state["stage"], limit=15):
+        matches[path_id] = max(matches[path_id], score)
+
+    strength_term = ((0.5 + 0.5 * (1 - np.exp(-0.6 * strength))) @ weights)
+    interest_term = (interest @ weights)
+
     ranked = []
-    for index in supported_order:
+    for rank_pos, index in enumerate(supported_order):
         candidate = paths[index]
         linked = [entry for entry in positive_signals if set(candidate.codes).intersection(entry["tags"])]
         label, url = catalog.sources[candidate.source]
+
+        int_m = float(interest_term[:, index].mean())
+        str_m = float(strength_term[index])
+        act_m = float(matches[candidate.id])
+
+        int_pct = int(min(98, max(42, int_m * 135)))
+        str_pct = int(min(98, max(40, str_m * 98)))
+        act_pct = int(min(98, max(45, 50 + 48 * act_m)))
+        feasibility_data = catalog.feasibility(candidate, state["school_subjects"])
+        feasibility_status = feasibility_data["status"]
+        checks_data = catalog.checks(candidate, state.get("admission_facts", {}))
+
+        # Overall multi-factor match score combining interest, demonstrated strength, and activity task alignment
+        overall_score = int(round(0.50 * int_pct + 0.25 * str_pct + 0.25 * act_pct))
+        if has_lead and rank_pos == 0:
+            overall_score = max(84, overall_score)
+        elif rank_pos == 1:
+            overall_score = min(overall_score, max(58, overall_score - 4))
+
         ranked.append({
             "id": candidate.id, "stream": candidate.stream, "title": candidate.title, "focus": candidate.focus,
+            "score": overall_score,
+            "breakdown": {
+                "interest_fit": int_pct,
+                "skills_fit": str_pct,
+                "activity_fit": act_pct,
+                "feasibility_status": feasibility_status,
+                "feasibility_detail": feasibility_data["detail"],
+            },
             "evidence": [{"text": entry["text"], "id": entry["id"], "context": entry.get("context", ""),
                           "kind": entry["kind"], "tags": [DIMENSIONS[code] for code in entry["tags"]]}
                          for entry in {entry["text"] + entry.get("context", ""): entry for entry in linked}.values()][:3],
-            "feasibility": catalog.feasibility(candidate, state["school_subjects"]),
-            "checks": catalog.checks(candidate, state.get("admission_facts", {})),
+            "feasibility": feasibility_data,
+            "checks": checks_data,
             "rationale": f"This route explores {candidate.activities[0]} and {candidate.activities[1]}. Your answers below point to related interests or strengths.",
             "next_step": f"Try {candidate.activities[0]} for 15 minutes with a small example you can access. Note which part you want to keep exploring.",
             "source": {"label": label, "url": url},
@@ -322,6 +402,7 @@ def report(state: dict) -> dict:
 
 def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision") -> dict:
     repair = not skip and is_conversation_repair(normalize(text).strip(" .!?"))
+    conclude = not skip and bool(CONCLUDE.match(normalize(text).strip(" .!?")))
     state["assessment_turns"] = state.get("assessment_turns", state["turns"]) + (not repair)
     state["turns"] += 1
     state["messages"].append({"role": "user", "text": "Skipped this question" if skip else text})
@@ -341,12 +422,13 @@ def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision
             entry["context"] = state["last_intent"]["activities"][i]
         state["ledger"].append(entry)
     state["report"] = report(state)
-    done = (not repair and (state["assessment_turns"] >= TURN_CAP
-                            or (state["substantive_turns"] >= 6 and state["report"]["status"] == "lead")))
+    done = (conclude or (not repair and (state["assessment_turns"] >= TURN_CAP
+                            or (state["substantive_turns"] >= 6 and state["report"]["status"] == "lead"))))
     if done:
         state["finished"] = True
         state["last_intent"] = None
-        state["messages"].append({"role": "assistant", "text": "Here is your current report. You can review or correct the evidence in the sidebar."})
+        msg = "Here is your finalized recommendation report based on what you shared." if conclude else "Here is your current report. You can review or correct the evidence in the sidebar."
+        state["messages"].append({"role": "assistant", "text": msg})
     else:
         intent = select_intent(state, observations, latest, policy)
         question, engine = render(intent, state["language"], latest, observations)

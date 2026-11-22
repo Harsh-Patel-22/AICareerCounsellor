@@ -38,10 +38,10 @@ def perform(method: str, path: str, body: dict | None = None) -> bool:
     return False
 
 
-def send_turn(state: dict, text: str, skip: bool = False) -> None:
+def send_turn(state: dict, text: str, skip: bool = False, finish: bool = False) -> None:
     previous = st.session_state.get("pending_turn")
-    if not previous or (previous["text"], previous["skip"]) != (text, skip):
-        previous = {"request_id": str(uuid4()), "revision": state["revision"], "text": text, "skip": skip}
+    if not previous or (previous["text"], previous["skip"], previous.get("finish")) != (text, skip, finish):
+        previous = {"request_id": str(uuid4()), "revision": state["revision"], "text": text, "skip": skip, "finish": finish}
         st.session_state.pending_turn = previous
     if perform("POST", f"/sessions/{state['id']}/turns", previous):
         st.session_state.pop("pending_turn", None)
@@ -81,8 +81,28 @@ def show_report(state: dict) -> None:
         else:
             label = "Route to explore"
         with st.container(border=True):
-            st.caption(f"{label} · {option['stream']}")
-            st.subheader(option["title"])
+            header_col1, header_col2 = st.columns([3, 1])
+            with header_col1:
+                st.caption(f"{label} · {option['stream']}")
+                st.subheader(option["title"])
+            with header_col2:
+                score = option.get("score", 75)
+                st.metric("Overall Match", f"{score}%")
+
+            if "breakdown" in option:
+                bd = option["breakdown"]
+                st.markdown("**Multi-Factor Alignment:**")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.caption(f"🎯 Interest Fit: **{bd.get('interest_fit', 0)}%**")
+                    st.progress(bd.get("interest_fit", 0) / 100.0)
+                with c2:
+                    st.caption(f"💪 Demonstrated Skills: **{bd.get('skills_fit', 0)}%**")
+                    st.progress(bd.get("skills_fit", 0) / 100.0)
+                with c3:
+                    st.caption(f"🔍 Activity Alignment: **{bd.get('activity_fit', 0)}%**")
+                    st.progress(bd.get("activity_fit", 0) / 100.0)
+
             st.write(option["focus"])
             st.write(option["rationale"])
             st.markdown("**What you shared**")
@@ -155,11 +175,30 @@ with conversation:
     for message in state["messages"]:
         with st.chat_message(message["role"]):
             st.text(message["text"])
+
+    rep = state.get("report")
+    if rep and rep.get("options"):
+        with st.expander("📊 Live Recommendations & Match Scores (Updated in real-time)", expanded=True):
+            st.caption("Here is your current shortlist based on what you have shared so far:")
+            for opt in rep["options"]:
+                st.markdown(f"⭐ **{opt['title']}** ({opt['stream']}) — **{opt.get('score', 75)}% Match**")
+                if "breakdown" in opt:
+                    b = opt["breakdown"]
+                    st.caption(f"🎯 Interest Fit: {b.get('interest_fit')}%  ·  💪 Skills Fit: {b.get('skills_fit')}%  ·  🔍 Activity Alignment: {b.get('activity_fit')}%")
+            if not state["finished"]:
+                st.write("")
+                col_fin, col_hint = st.columns([1, 2])
+                with col_fin:
+                    if st.button("✅ Done with this — Finalize Shortlist", type="primary", key="btn_finalize_early"):
+                        send_turn(state, "", finish=True)
+                with col_hint:
+                    st.caption("Satisfied with these options? Finalize now, or reply below to refine further.")
+
     if not state["finished"]:
         if st.button("Skip this question"):
-            send_turn(state, "", True)
-        if reply := st.chat_input("Write a reply", max_chars=1200):
-            with st.spinner("Preparing the next question…"):
+            send_turn(state, "", skip=True)
+        if reply := st.chat_input("Write a reply to refine further, or type 'done' if finished...", max_chars=1200):
+            with st.spinner("Preparing the next response…"):
                 send_turn(state, reply)
 with recommendations:
     show_report(state)

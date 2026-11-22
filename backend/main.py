@@ -27,6 +27,7 @@ class TurnInput(BaseModel):
     revision: int = Field(ge=0)
     text: str = Field(default="", max_length=1200)
     skip: bool = False
+    finish: bool = False
 
 
 class RevisionInput(BaseModel):
@@ -81,6 +82,15 @@ def turn(session_id: str, data: TurnInput) -> dict:
         raise HTTPException(409, "The session changed. Refresh it and try again.")
     if state["finished"]:
         raise HTTPException(409, "This conversation is complete.")
+    if data.finish:
+        state["finished"] = True
+        state["last_intent"] = None
+        state["report"] = report(state)
+        state["messages"].append({
+            "role": "assistant",
+            "text": "Here is your finalized recommendation report based on what you shared. You can review all pathway details in the 'Your report' tab."
+        })
+        return save_state(state, data.revision, request_id)
     if not data.skip and not data.text.strip():
         raise HTTPException(422, "Enter a reply or skip the question.")
     text = CONTACT.sub("[redacted]", data.text.strip())
