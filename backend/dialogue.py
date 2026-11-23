@@ -106,9 +106,15 @@ def recent_context(messages: list[dict]) -> dict:
 
 def new_session(stage: int, language: str, school_subjects: list[str]) -> dict:
     if language == "hinglish":
-        greeting = f"Class {stage} ke baad aap kya explore kar rahe hain? Kisi activity ya subject ka example share kar sakte hain."
+        if stage == 12:
+            greeting = "Class 12 ke baad aap kaunsa college degree ya course dekh rahe hain? (e.g., B.Tech CSE, BCA, Mechanical, B.Com, BBA). Kisi activity, project ya subject ka example share kar sakte hain."
+        else:
+            greeting = "Class 10 ke baad aap kaunsa stream explore kar rahe hain? (Science PCM/PCB, Commerce, Arts). Kisi activity ya subject ka example share kar sakte hain."
     else:
-        greeting = f"What are you considering after Class {stage}? You can start with something you enjoyed doing recently."
+        if stage == 12:
+            greeting = "What college courses or degrees are you considering after Class 12? (e.g., B.Tech CSE, BCA, Mechanical, B.Sc, B.Com, BBA). You can share an activity, project, or subject you enjoyed."
+        else:
+            greeting = "What stream are you considering after Class 10? (Science PCM/PCB, Commerce, Arts). You can start with something you enjoyed doing recently."
     return {
         "id": uuid4().hex, "revision": 0, "stage": stage, "language": language,
         "school_subjects": school_subjects, "messages": [{"role": "assistant", "text": greeting}],
@@ -505,6 +511,7 @@ def add_turn(state: dict, text: str, skip: bool, render, policy: str = "decision
         state["messages"].append({"role": "assistant", "text": msg})
     else:
         intent = select_intent(state, observations, latest, policy)
+        intent["stage"] = state["stage"]
         if intent.get("activities"):
             state.setdefault("asked_activities", []).append(list(intent["activities"]))
         try:

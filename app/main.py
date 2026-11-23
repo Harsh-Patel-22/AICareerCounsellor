@@ -108,15 +108,17 @@ def show_report(state: dict) -> None:
         st.markdown("Your shortlist will appear once you share something specific you enjoyed or tried.")
         return
     st.markdown(result["note"])
+    is_stage_12 = state.get("stage") == 12
     for index, option in enumerate(result["options"]):
         if result["status"] == "lead":
-            label = "Suggested route" if index == 0 else "Alternative"
+            label = "Recommended Degree" if is_stage_12 else ("Suggested stream" if index == 0 else "Alternative stream")
         else:
-            label = "Route to explore"
+            label = "Degree to explore" if is_stage_12 else "Stream to explore"
         with st.container(border=True):
             header_col1, header_col2 = st.columns([3, 1])
             with header_col1:
-                st.caption(f"{label} · {option['stream']}")
+                stream_type = f"Undergraduate Degree ({option['stream']})" if is_stage_12 else option['stream']
+                st.caption(f"{label} · {stream_type}")
                 st.subheader(option["title"])
             with header_col2:
                 score = option.get("score", 75)
@@ -301,7 +303,11 @@ def sidebar(state: dict) -> None:
             if st.button("Remove from assessment", disabled=selected is None) and selected:
                 perform("PATCH", f"{path}/evidence/{selected}", {"revision": state["revision"]})
                 st.rerun()
-        if st.button("Refresh session"):
+        if st.button("🔄 Start New Conversation", type="primary", use_container_width=True):
+            st.session_state.career_session = None
+            st.session_state.pop("pending_turn", None)
+            st.rerun()
+        if st.button("Refresh session", use_container_width=True):
             if perform("GET", path):
                 st.session_state.pop("pending_turn", None)
             st.rerun()
@@ -340,6 +346,9 @@ if not state:
     st.stop()
 
 sidebar(state)
+is_stage_12 = state["stage"] == 12
+track_desc = "🎓 Active Decision Track: **Undergraduate College Degree Courses (After Class 12)**" if is_stage_12 else "🏫 Active Decision Track: **Senior Secondary Academic Streams (After Class 10)**"
+st.info(track_desc)
 conversation, recommendations, nlp_inspector = st.tabs(["💬 Conversation", "📋 Your Report", "🔬 NLP Pipeline & Explainability"])
 with conversation:
     for message in state["messages"]:

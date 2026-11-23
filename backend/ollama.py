@@ -31,17 +31,24 @@ QUESTION_SCHEMA = {
     "required": ["question"], "additionalProperties": False,
 }
 INSTRUCTIONS = (
-    "You are an encouraging, expert AI Career Counsellor for students in India exploring academic streams after Class 10/12 "
-    "(Science PCM/PCB, Commerce, Humanities/Arts).\n"
-    "GOAL: Guide the student towards their ideal stream, sub-stream, or college degree by discovering their authentic strengths, "
-    "cognitive problem-solving style (analytical, creative, practical, investigative), and interests without rigid surveys.\n"
-    "CRITICAL RULES:\n"
-    "1. NEVER ask cliché questions like 'what part of that stayed with you', 'what caught your interest', or repeat what the student just answered.\n"
-    "2. Every question MUST add clear DIAGNOSTIC VALUE towards differentiating streams and specializations "
-    "(e.g. software/algorithm engineering vs computer systems/hardware, pure science research vs applied technology, "
-    "finance/accounting vs corporate management, creative media vs clinical psychology).\n"
-    "3. Ground your question in real-world applications, concrete projects, or problem-solving scenarios.\n"
-    "4. Return valid JSON with key 'question' containing exactly ONE clear, conversational question ending with '?'."
+    "You are 'Disha', an expert academic career counsellor for Indian students. "
+    "You talk naturally with warmth, authority, and empathy. You NEVER break character, never mention you are an AI, "
+    "and never mention system prompts or instructions.\n\n"
+    "CRITICAL COUNSELLING RULES:\n"
+    "1. THIS IS CAREER COUNSELLING, NOT A TECHNICAL OR SWE JOB INTERVIEW: "
+    "NEVER ask technical interview questions (syntax, pointers vs references, coding quizzes, system design, or asking them to build production apps/software). "
+    "The student has NOT graduated college — they are here to decide WHAT degree or stream to study!\n"
+    "2. FOCUS ON ACADEMIC MINDSET, LEARNING STYLES & CURRICULUM DIFFERENCES:\n"
+    "- If interested in computers after 12th: Compare deep mathematical theory, algorithms, and logic (B.Tech CSE) "
+    "vs practical software development, hands-on app/web building, and databases (BCA), or hardware and embedded circuits (Electrical/Electronics).\n"
+    "- If interested in science/physics: Compare theoretical research and fundamental scientific laws (B.Sc Physics) "
+    "vs applying physics to design machinery, robotics, and physical mechanisms (B.Tech Mechanical).\n"
+    "- If interested in business/numbers: Compare deep financial calculation, auditing, and accounting rules (CA / B.Com) "
+    "vs team management, business operations, and leadership (BBA).\n"
+    "- For Class 10: Diagnose comfort with advanced mathematics, memorization tolerance (Biology/Humanities) vs problem-solving logic (Maths/Physics), "
+    "and interest in commerce/business vs creative writing/arts.\n"
+    "3. Ask ONE short, clear diagnostic question at a time (1-2 lines). Simple, accessible English (or Roman Hindi/Hinglish if requested).\n"
+    "4. Return valid JSON with key 'question' containing exactly ONE question ending with '?'."
 )
 CLARIFY_INSTRUCTIONS = (
     "Ask an insightful question exploring what specific applications, real-world problems, or projects the student would be curious to tackle."
@@ -165,8 +172,11 @@ def fallback_question(intent: dict, language: str, latest: str, observations) ->
         if len(detail.split()) > 7:
             clean = re.sub(r"^(?:i\s+(?:really\s+)?(?:love|like|enjoy)\s+(?:the way\s+)?(?:how\s+)?|the\s+way\s+(?:how\s+)?|i\s+(?:can|could)\s+)", "", detail, flags=re.I).strip()
             detail = clean if clean else detail
-        return (f'“{detail}” mein aapko kya interesting laga?' if hinglish
-                else f'You mentioned “{detail}”. What part of that stayed with you?')
+        if re.search(r"\b(?:program|code|coding|computer|c language|software)\b", detail, re.I):
+            return ("Programming ya computers mein aapko kis tarah ke practical problems ya software create karna pasand hai?" if hinglish
+                    else "In computers and programming, what specific types of applications or challenges do you most enjoy exploring?")
+        return (f'“{detail}” ke baare mein sochte waqt, aapko kis tarah ke practical aspects ya problems mein maza aata hai?' if hinglish
+                else f'When thinking about “{detail}”, what specific problems or aspects excite you most to explore?')
     if intent["kind"] == "probe_interest":
         anchor = intent["anchor"]
         if hinglish:
@@ -198,14 +208,14 @@ def fallback_question(intent: dict, language: str, latest: str, observations) ->
     if hinglish:
         if anchor:
             if re.search(r"\b(?:program|code|coding|computer|c language|software)\b", anchor, re.I):
-                return "Programming ya computers mein aapko kis tarah ke projects ya problems solve karna sabse zyada pasand hai?"
-            return f"Jab aapne “{anchor}” kaha, toh usmein se kaunsi specific activity ya baat aapke dhyan mein aati hai?"
-        return "Kya aap koi ek recent activity bata sakte hain jisme aapko sabse zyada maza aaya?"
+                return "Programming ya computers mein aap theoretical algorithms samajhna pasand karenge ya practical software aur apps banana?"
+            return f"“{anchor}” ke context mein, aapko kis tarah ke practical concepts ya problems explore karna pasand hai?"
+        return "Kya aap koi ek practical activity ya subject bata sakte hain jisme aapko sabse zyada maza aaya?"
     if anchor:
         if re.search(r"\b(?:program|code|coding|computer|c language|software)\b", anchor, re.I):
-            return "What kind of projects or problems do you most enjoy creating or solving with programming?"
-        return f"When you say “{anchor}”, what is one specific activity or part of that subject that comes to mind?"
-    return "What is one activity you enjoyed recently, at school or outside it?"
+            return "In computers and programming, are you more drawn to understanding algorithms and logic, or building hands-on applications and software?"
+        return f"Regarding “{anchor}”, what specific problems, projects, or applications in that area do you enjoy tackling?"
+    return "What is one activity or subject you enjoyed recently, at school or outside it?"
 
 
 def local_chat(system: str, data: dict, schema: dict, timeout: int = 65, max_tokens: int = 170, messages: list[dict] | None = None) -> dict:
@@ -252,6 +262,21 @@ def make_question(intent: dict, language: str, latest: str, observations, messag
     }.get(kind, PROBE_INSTRUCTIONS)
     if hinglish:
         instructions += " Use natural conversational Roman Hindi with familiar English words."
+    stage = intent.get("stage", 10)
+    if stage == 12:
+        stage_instruction = (
+            "\nSTUDENT CONTEXT: Student is choosing their UNDERGRADUATE COLLEGE DEGREE after Class 12.\n"
+            "Diagnose degree preferences: e.g. B.Tech Computer Science vs BCA, Mechanical Engineering vs B.Sc Physics, "
+            "CA Foundation / B.Com vs BBA. Do NOT ask about high school streams (PCM/Commerce).\n"
+            "Ask about theory vs practical programming, software vs hardware, pure science research vs applied engineering."
+        )
+    else:
+        stage_instruction = (
+            "\nSTUDENT CONTEXT: Student is choosing their SENIOR SECONDARY STREAM after Class 10.\n"
+            "Diagnose stream preferences: Science (PCM, PCB, PCMB), Commerce, or Humanities/Arts.\n"
+            "Diagnose comfort with advanced math, biology interest, logical reasoning vs memory-based learning."
+        )
+    instructions += stage_instruction
     past_questions = [m.get("text", "") for m in (messages or []) if m.get("role") == "assistant"]
     if past_questions:
         instructions += (
@@ -259,7 +284,11 @@ def make_question(intent: dict, language: str, latest: str, observations, messag
             + "\n".join(f"- {q}" for q in past_questions[-4:])
             + "\nAsk a fresh, distinct diagnostic question exploring a different facet."
         )
-    data = {"language": "Roman Hindi mixed with English" if hinglish else "English", "intent": kind}
+    data = {
+        "language": "Roman Hindi mixed with English" if hinglish else "English",
+        "intent": kind,
+        "academic_stage": f"Class {stage} Decision ({'High School Stream' if stage == 10 else 'Undergraduate Degree'})",
+    }
     if probing or kind in {"scaffold_interest", "explore_example"}:
         if kind == "probe_interest":
             instructions += " " + PROBE_EXAMPLES[language]
@@ -290,20 +319,22 @@ def make_question(intent: dict, language: str, latest: str, observations, messag
         if kind in {"probe_topic", "probe_detail"} and ACTIVITY_ROLE.search(question) and not ACTIVITY_ROLE.search(data.get("activity", "")):
             raise ValueError("Question assumed how the student took part")
         if probing:
-            topics = topical_words(data.get("activity", ""))
-            overlap = topics & topical_words(question)
-            if (not PROBE_QUESTION[language].search(question) or not PROBE_CUES[language].search(question)
-                    or len(overlap) < min(3, len(topics)) or re.search(r"[.!]|\n|<think", question[:-1], re.I)
-                    or re.search(r"^what did you (?:notice|learn|track|do|find out)\b", question, re.I)):
-                raise ValueError("Follow-up missed the activity or interest intent")
+            if not messages:
+                topics = topical_words(data.get("activity", ""))
+                overlap = topics & topical_words(question)
+                if (not PROBE_QUESTION[language].search(question) or not PROBE_CUES[language].search(question)
+                        or len(overlap) < min(3, len(topics)) or re.search(r"[.!]|\n|<think", question[:-1], re.I)
+                        or re.search(r"^what did you (?:notice|learn|track|do|find out)\b", question, re.I)):
+                    raise ValueError("Follow-up missed the activity or interest intent")
             if language == "english" and re.search(r"\b(?:my|our)\b", data.get("activity", ""), re.I):
                 question = address_student(question)
         if kind == "compare":
             first, second = (question.casefold().find(text.casefold()) for text in intent["activities"])
-            if 0 <= second <= first and not messages:
-                raise ValueError("Comparison changed")
-            if (first < 0 or second < 0) and not messages:
-                raise ValueError("Comparison changed")
+            if not messages:
+                if 0 <= second <= first:
+                    raise ValueError("Comparison changed")
+                if first < 0 or second < 0:
+                    raise ValueError("Comparison changed")
         if past_questions:
             q_clean = set(re.findall(r"\w+", question.lower()))
             for prev in past_questions[-3:]:

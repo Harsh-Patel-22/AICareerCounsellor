@@ -268,12 +268,13 @@
       "stage": 12,
       "stream": "Science",
       "title": "B.E./B.Tech. Computer Science",
-      "focus": "Software systems",
+      "focus": "Computer science, software engineering and algorithms",
       "codes": "IR",
       "activities": [
         "debugging a program",
         "designing a small algorithm",
-        "building a software tool"
+        "building a software tool",
+        "writing computer software code and programs"
       ],
       "subjects": [],
       "source": "josaa"
@@ -417,13 +418,14 @@
       "id": "bca",
       "stage": 12,
       "stream": "Cross-stream",
-      "title": "BCA",
-      "focus": "Application development",
+      "title": "BCA (Bachelor of Computer Applications)",
+      "focus": "Application development, practical software programming and database management",
       "codes": "IR",
       "activities": [
         "building a small application",
         "debugging a website",
-        "organising a database"
+        "organising a database",
+        "hands-on coding and software application development"
       ],
       "subjects": [],
       "source": "ugc"
